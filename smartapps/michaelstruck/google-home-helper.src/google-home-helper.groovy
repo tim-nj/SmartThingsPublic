@@ -1,10 +1,10 @@
 /**
- *  Google Home Helper-beta
+ *  Google Home Helper-Beta 3
  *
  *  Copyright © 2016 Michael Struck
- *  Version 1.0.0 11/23/16
+ *  Version 1.0.0 11/26/16
  * 
- *  Version 1.0.0 (11/23/16) - Initial release
+ *  Version 1.0.0 (11/26/16) - Initial release
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -132,7 +132,7 @@ def mainPageChild() {
         	def fullScenarioName = [Baseboard:"Baseboard Heater",Thermostat:"Heating/Cooling Thermostat",Control:"Control Scenario",Panic:"Panic Commands",Speaker:"Speaker",Voice:"Voice Reporting"][scenarioType] ?: scenarioType
             if (scenarioType) href "page${scenarioType}", title: "${fullScenarioName} Settings", description: scenarioDesc(), state: greyOutScen()
 		}
-		if (scenarioType && parent.getRestrictions()){
+		if (scenarioType && parent.showRestrictions){
 			section("Restrictions", hideable: true, hidden: !(runDay || timeIntervalInput || runMode)) {            
 				input "runDay", "enum", options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], title: "Only Certain Days Of The Week...",  multiple: true, required: false, image: imgURL() + "calendar.png"
         		href "timeIntervalInput", title: "Only During Certain Times...", description: getTimeLabel(timeStart, timeEnd), state: greyOutState(timeStart, timeEnd,""), image: imgURL() + "clock.png"
@@ -150,8 +150,9 @@ page(name: "timeIntervalInput", title: "Only during a certain time") {
 } 
 // Show "pageControl" page
 def pageControl() {
-	dynamicPage(name: "pageControl", title: "Control Scenario Settings", install: false, uninstall: false) {
-        section {
+	dynamicPage(name: "pageControl", install: false, uninstall: false) {
+        section { paragraph "Control Scenario Settings", image: imgURL() + "control.png" }
+        section ("Switch Selection"){
 			input "GoogleSwitch", "capability.switch", title: "Control Switch (On/Off, Momentary)", multiple: false, required: true, image: imgURL() + "dimmer.png"
     		input "showOptions", "enum", title: "Switch States To React To...", options: ["":"On/Off", "1":"On Only", "2":"Off Only"] , required: false, submitOnChange:true, defaultValue: ""
         }
@@ -249,25 +250,26 @@ def pageSTDevicesOnOff(type){
 }
 // Show "Panic" page
 def pagePanic() {
-	dynamicPage(name: "pagePanic", title: "Panic Commands Settings", install: false, uninstall: false) {
-        section {
+	dynamicPage(name: "pagePanic", install: false, uninstall: false) {
+        section {paragraph "Panic Commands Settings", image: imgURL() + "emergency.png"}
+        section ("Switch Selection") {
 			input "panicSwitchOn", "capability.momentary", title: "ON Control Switch (Momentary)", multiple: false, required: true, submitOnChange:true,image: imgURL() + "button.png"
           	if (panicSwitchOn) input "panicSwitchOff", "capability.momentary", title: "OFF Control Switch (Momentary)", multiple: false, required: false, submitOnChange:true,image: imgURL() + "button.png"
         }
         section ("When panic is activated...", hideWhenEmpty: true){
         	input "alarm", "capability.alarm", title: "Activate Alarms...", multiple: true, required: false, submitOnChange:true
-            if (parent.getSonos()) input "alarmSonos", "capability.musicPlayer", title: "Use Sonos As Alarm...", multiple: false , required: false , submitOnChange:true
+            if (parent.speakerSonos) input "alarmSonos", "capability.musicPlayer", title: "Use Sonos As Alarm...", multiple: false , required: false , submitOnChange:true
             if (alarm){
             	input "alarmType", "enum", title: "Select Alarm Type", options: ["strobe":"Strobe light", "siren":"Siren", "both":"Both stobe and siren"], multiple: false, required: false  
             	input "alarmTimer", "number", title:"Alarm Turns Off Automatically After (Minutes)", required: false
             }
-            if (alarmSonos && parent.getSonos()  && alarmSonos.name.contains("Sonos")){
+            if (alarmSonos && parent.speakerSonos  && alarmSonos.name.contains("Sonos")){
                 input "alarmSonosVolume", "number", title:"Sonos Alarm Volume", required: false
                 input "alarmSonosSound", "enum", title:"Sonos Alarm Sound", options: [1:"Alarm 1-European Siren", 2:"Alarm 2-Sci-Fi Siren", 3:"Alarm 3-Police Car Siren", 4:"Alarm 4-Red Alert",5:"Custom-User Defined"], multiple: false, required: false, submitOnChange:true 
                 if (alarmSonosSound == "5") input "alarmSonosCustom", "text", title:"URL/Location Of Custom Sound...", required: false
                 input "alarmSonosTimer", "number", title:"Alarm Turns Off Automatically After (Seconds)", required: false
             }
-            if (alarmSonos && parent.getSonos()  && !alarmSonos.name.contains("Sonos")){
+            if (alarmSonos && parent.speakerSonos  && !alarmSonos.name.contains("Sonos")){
             	paragraph "You have chosen a speaker for your alarm that is not supported. Currently, only Sonos speakers can be used as alarms. Please choose a Sonos speaker."
             }
             input ("panicContactsOn", "contact", title: "Send Notifications To...", required: false) {
@@ -290,8 +292,9 @@ def pagePanic() {
 }
 // Show "pageSpeaker" page
 def pageSpeaker(){
-	dynamicPage(name: "pageSpeaker", title: "Speaker Settings", install: false, uninstall: false) {
-		section {
+	dynamicPage(name: "pageSpeaker", install: false, uninstall: false) {
+		section { paragraph "Speaker Settings", image: imgURL() + "speaker.png" }
+        section ("Switch/Speaker Selection"){
         	input "vDimmerSpeaker", "capability.switchLevel", title: "Control Switch (Dimmer)", multiple: false, required:false, submitOnChange:true,image: imgURL() + "dimmer.png"
             input "speaker", "capability.musicPlayer", title: "Speaker To Control", multiple: false , required: false, submitOnChange:true
         }
@@ -301,8 +304,8 @@ def pageSpeaker(){
         	input "speakerInitial", "number", title: "Volume When Speaker Turned On", required: false
 		}
 		section ("Speaker Track Controls", hideable: true, hidden: !(nextSwitch || prevSwitch)) {    
-        	input "nextSwitch", "capability.momentary", title: "Next Track Switch (Momentary)", multiple: false, required: false
-       		input "prevSwitch", "capability.momentary", title: "Previous Track Switch (Momentary)", multiple: false, required: false
+        	input "nextSwitch", "capability.momentary", title: "Next Track Switch (Momentary)", multiple: false, required: false,image: imgURL() + "button.png"
+       		input "prevSwitch", "capability.momentary", title: "Previous Track Switch (Momentary)", multiple: false, required: false,image: imgURL() + "button.png"
     	}
         if (vDimmerSpeaker){
         	section ("Other Functions/Controls", hideable: true, hidden: !(speakerOnSwitches || speakerOffSwitches || speakerOffFunction)){
@@ -311,7 +314,7 @@ def pageSpeaker(){
                 input "speakerOffFunction", "bool", title: "Control Switch off action: Pause/Stop Playback", defaultValue: false
         	}
 		}
-        if (speaker && songOptions(1) && parent.getSonos() && speaker.name.contains("Sonos")){
+        if (speaker && songOptions(1) && parent.speakerSonos && speaker.name.contains("Sonos")){
             for (int i = 1; i <=sonosSlots(); i++) {
                 section ("Sonos Saved Station ${i}", hideable: true, hidden: !(settings."song${i}Switch" || settings."song${i}Station")){
 					input "song${i}Switch", "capability.momentary", title: "Saved Station Switch #${i} (Momentary)", multiple: false, required: false, submitOnChange:true,image: imgURL() + "button.png"
@@ -321,7 +324,7 @@ def pageSpeaker(){
                 }
 			}
 		}
-        if (speaker && !songOptions(1) && parent.getSonos() && speaker.name.contains("Sonos")){
+        if (speaker && !songOptions(1) && parent.speakerSonos && speaker.name.contains("Sonos")){
         	section ("Sonos Saved Stations", hideable: true, hidden: false) {
             	paragraph "There are currently no songs available in the Sonos memory. Play a "+
                 	"song or station through SmartThings, then come back to this app and the station list should be available"
@@ -331,8 +334,9 @@ def pageSpeaker(){
 }
 // Show "pageThermostat" page
 def pageThermostat(){
-    dynamicPage(name: "pageThermostat", title: "Heating/Cooling Thermostat Settings", install: false, uninstall: false) {
-        section {
+    dynamicPage(name: "pageThermostat", install: false, uninstall: false) {
+        section {paragraph "Heating/Cooling Thermostat Settings", image: imgURL() + "temp.png"}
+        section ("Switch/Thermostat Selection"){
             input "vDimmerTstat", "capability.switchLevel", title: "Control Switch (Dimmer)", multiple: false, required:false, image: imgURL() + "dimmer.png"
             input "tstat", "capability.thermostat", title: "Thermostat To Control", multiple: false , required: false
             input "autoControlTstat", "bool", title: "Control Thermostat In 'Auto' Mode", defaultValue: false
@@ -350,7 +354,7 @@ def pageThermostat(){
             input "coolingSwitch", "capability.momentary", title: "Cooling Mode Switch (Momentary)", multiple: false, required: false,image: imgURL() + "button.png"
             input "autoSwitch", "capability.momentary", title: "Auto Mode Switch (Momentary)", multiple: false, required: false,image: imgURL() + "button.png"
         }
-        if (parent.getNest()){
+        if (parent.tstatNest){
             section ("Nest Home/Away Controls", hideable: true, hidden:!(nestHome || nestAway)){
                 input "nestHome", "capability.momentary", title: "Home Mode Switch (Momentary)", multiple: false, required: false,image: imgURL() + "button.png"
                 input "nestAway", "capability.momentary", title: "Away Mode Switch (Momentary)", multiple: false, required: false,image: imgURL() + "button.png"
@@ -360,7 +364,8 @@ def pageThermostat(){
 }
 // Show "pageBaseboard" page
 page(name: "pageBaseboard", title: "Baseboard Heater Settings", install: false, uninstall: false) {
-	section {
+	section {paragraph "Baseboard Heater Settings", image: imgURL() + "heating.png"}
+    section ("Switch/Baseboard Selection") {
 		input "vDimmerBB", "capability.switchLevel", title: "Control Switch (Dimmer)", multiple: false, required:false,image: imgURL() + "dimmer.png"
 		input "tstatBB", "capability.thermostat", title: "Thermostat To Control", multiple: true, required: false
 	}
@@ -375,8 +380,9 @@ page(name: "pageBaseboard", title: "Baseboard Heater Settings", install: false, 
 }
 //Show "pageVoice" page
 def pageVoice(){
-    dynamicPage(name: "pageVoice", title: "Voice Reporting Settings", install: false, uninstall: false){
-        section {
+    dynamicPage(name: "pageVoice", install: false, uninstall: false){
+        section { paragraph "Voice Reporting Settings", image: imgURL() + "voice.png" }
+        section ("Switch/Speaker Selection") {
             input "voiceControl", "capability.momentary", title: "Voice Report Control Switch (Momentary)", multiple: false, required: true,image: imgURL() + "button.png"
             input "voiceSpeaker", "capability.musicPlayer", title: "Voice Report Speaker", multiple: false, required: false, submitOnChange:true
             if (voiceSpeaker) input "voiceVolume", "number", title: "Speaker Volume", required: false
@@ -392,13 +398,13 @@ def pageVoice(){
 			}
         }
         section ("Report Types"){
-            input "voicePre", "text", title: "Pre Message Before Device Report", description: "Enter a message to play before the device report", defaultValue: "This is your SmartThings voice report for %time%, %day%, %date%.", required: false
+            input "voicePre", "text", title: "Pre Message Before Device Report", description: "Enter a message to play before the device report", defaultValue: "This is your SmartThings voice report for %time%, %day%, %date%.", required: false, capitalization: "sentences"
             href "pageSwitchReport", title: "Switch/Dimmer Report", description: reportDesc(voiceSwitch, voiceDimmer, ""), state: greyOutState(voiceSwitch, voiceDimmer, "")
             href "pagePresenceReport", title: "Presence Report", description: reportDesc(voicePresence, "", ""), state: greyOutState(voicePresence, "", "")
             href "pageDoorReport", title: "Door/Window Report", description: reportDesc(voiceDoorSensors, voiceDoorControls, voiceDoorLocks), state: greyOutState(voiceDoorSensors, voiceDoorControls, voiceDoorLocks)
             href "pageTempReport", title: "Temperature/Thermostat Report", description: reportDesc(voiceTemperature, voiceTempSettings, voiceTempVar), state: greyOutState(voiceTemperature, voiceTempSettings, voiceTempVar)
             href "pageHomeReport", title: "Mode and Smart Home Monitor Report", description: reportDescMSHM(), state: greyOutState(voiceMode, voiceSHM, "")
-            input "voicePost", "text", title: "Post Message After Device Report", description: "Enter a message to play after the device report", required: false
+            input "voicePost", "text", title: "Post Message After Device Report", description: "Enter a message to play after the device report", required: false, capitalization: "sentences"
         }
     }
 }
@@ -457,9 +463,7 @@ def updated() {
     initialize()
 }
 def uninstalled(){ deleteChildSwitches() }
-def initialize() {
-    parent ? initializeChild() : initializeParent()
-}
+def initialize() { parent ? initializeChild() : initializeParent() }
 private initializeParent(){
 	childApps.each {child ->log.info "Installed Scenario: ${child.label}"}
 }
@@ -473,7 +477,7 @@ private initializeChild(){
             if (coolingSwitch) subscribe (coolingSwitch, "switch.on", coolHandler)
             if (autoSwitch) subscribe (autoSwitch, "switch.on", autoHandler)
 		}
-		if (parent.getNest()){
+		if (parent.tstatNest){
 			if (nestHome) subscribe(nestHome, "switch.on", nestHomeHandler)
 			if (nestAway) subscribe(nestAway, "switch.on", nestAwayHandler)
 		}
@@ -487,7 +491,7 @@ private initializeChild(){
 		subscribe (vDimmerSpeaker, "switch", speakerOnHandler)
 		if (nextSwitch) subscribe (nextSwitch, "switch.on", controlNextHandler)
 		if (prevSwitch) subscribe (prevSwitch, "switch.on", controlPrevHandler) 
-		if (parent.getSonos() && speaker.name.contains("Sonos")){
+		if (parent.speakerSonos && speaker.name.contains("Sonos")){
 			for (int i = 1; i <= sonosSlots(); i++) {
 				if (settings."song${i}Switch" && settings."song${i}Station"){
 					saveSelectedSong(i,settings."song${i}Station")
@@ -499,7 +503,7 @@ private initializeChild(){
 	if (scenarioType == "Panic"){
     	if (panicSwitchOn) subscribe (panicSwitchOn, "switch.on", panicOn)
         if (panicSwitchOff) subscribe (panicSwitchOff, "switch.on", panicOff) 
-        if (alarmSonos && parent.getSonos() && alarmSonos.name.contains("Sonos") && alarmSonosSound) getAlarmSound()
+        if (alarmSonos && parent.speakerSonos && alarmSonos.name.contains("Sonos") && alarmSonosSound) getAlarmSound()
 	}
     if (scenarioType == "Voice" && (voiceControl && (voiceDevice || voiceSpeaker)) || (voiceNotification && (voiceContacts || voiceSMSnumber || voicePush))) { 
     	subscribe(voiceControl, "switch.on", voiceHandler)
@@ -605,7 +609,7 @@ def panicOn(evt){
 				runIn(delayOff*60, alarmTurnOff, [overwrite: true])
 			}
 		}
-        if (alarmSonos && parent.getSonos()  && alarmSonos.name.contains("Sonos") && alarmSonosSound) { 
+        if (alarmSonos && parent.speakerSonos && alarmSonos.name.contains("Sonos") && alarmSonosSound) { 
 			if (alarmSonosVolume) alarmSonos.setLevel(alarmSonosVolume as int)
             alarmSonos.playSoundAndTrack (state.alarmSound.uri, state.alarmSound.duration,"")
         }
@@ -620,7 +624,7 @@ def panicOff(evt){
 	if (getOkToRun("Panic actions deactivated")) {
 		if (alarmOff){
             alarmTurnOff()
-        	if (alarmSonos && parent.getSonos()  && alarmSonos.name.contains("Sonos") && alarmSonosSound) alarmSonos.stop()
+        	if (alarmSonos && parent.speakerSonos && alarmSonos.name.contains("Sonos") && alarmSonosSound) alarmSonos.stop()
 		}
 		if (panicSMSnumberOff || panicPushOff || panicContactsOff){
 			def smsTxt = panicSMSMsgOff ? panicSMSMsgOff : "Panic was deactivated without message text input. Please investigate"
@@ -780,7 +784,7 @@ private String convertToHex(ipAddress, port){
 }
 def getOkToRun(module){
 	def result = true
-    if (parent.getRestrictions()) result = (!runMode || runMode.contains(location.mode)) && getDayOk(runDay) && getTimeOk(timeStart,timeEnd)   
+    if (parent.showRestrictions) result = (!runMode || runMode.contains(location.mode)) && getDayOk(runDay) && getTimeOk(timeStart,timeEnd)   
 	if (result) log.info "Google Home Helper scenario '${app.label}', '${module}' triggered"
 	else log.warn "Google Home Helper scenario '${app.label}', '${module}' not triggered due to scenario restrictions"
     result
@@ -815,7 +819,7 @@ def scenarioDesc(){
         desc += nextSwitch && desc ? "\n'${nextSwitch}' switch activates Next Track." : ""
         desc += prevSwitch && desc ? "\n'${prevSwitch}' switch activates Previous Track." : ""
         for (int i = 1; i <= sonosSlots(); i++) {
-        	desc += parent.getSonos() && (speaker && speaker.name.contains("Sonos")) && settings."song${i}Switch" && settings."song${i}Station" && desc ? "\n'" + settings."song${i}Switch" + "' switch activates '" + settings."song${i}Station" + "'." : ""	
+        	desc += parent.speakerSonos && (speaker && speaker.name.contains("Sonos")) && settings."song${i}Switch" && settings."song${i}Station" && desc ? "\n'" + settings."song${i}Switch" + "' switch activates '" + settings."song${i}Station" + "'." : ""	
         }
     }
     if (scenarioType=="Thermostat"){
@@ -823,8 +827,8 @@ def scenarioDesc(){
         desc += heatingSwitch && desc ? "\n'${heatingSwitch}' switch activates 'Heat' mode." : ""
         desc += coolingSwitch && desc ? "\n'${coolingSwitch}' switch activates 'Cool' mode." : ""
         desc += autoSwitch && desc ? "\n'${autoSwitch}' switch activates 'Auto' mode." : ""
-        desc += parent.getNest() && nestHome && desc ? "\n'${nestHome}' switch activates 'Home' mode." : ""
-        desc += parent.getNest() && nestAway && desc? "\n'${nestAway}' switch activates 'Away' mode." : ""
+        desc += parent.tstatNest && nestHome && desc ? "\n'${nestHome}' switch activates 'Home' mode." : ""
+        desc += parent.tstatNest && nestAway && desc? "\n'${nestAway}' switch activates 'Away' mode." : ""
     }
     if (scenarioType=="Panic"){
     	desc = panicSwitchOn ? "'${panicSwitchOn}' switch activates panic actions." : ""
@@ -1052,7 +1056,10 @@ def doorWindowReport(){
     }
     def totalCount = countOpenedDoor + countOpened
     if (voiceDoorAll){
-    	if (!totalCount) result += "All of the doors and windows are closed and locked. "
+    	if (!totalCount && !countUnlocked) {
+        	result += "All of the doors and windows are closed"
+        	result += voiceDoorLocks ? " and locked. " : ". "
+        }
         if (!countOpened && !countOpenedDoor && countUnlocked){
    			result += "All of the doors and windows are closed, but the "
             result += countUnlocked > 1 ? "following are unlocked: ${listUnlocked}. " :"${listUnlocked} is unlocked. "
@@ -1131,24 +1138,21 @@ private parseDate(time, type){
 	def formattedDate = time ? time : new Date(now()).format("yyyy-MM-dd'T'HH:mm:ss.SSSZ", location.timeZone)
     new Date().parse("yyyy-MM-dd'T'HH:mm:ss.SSSZ", formattedDate).format("${type}", timeZone(formattedDate))
 }
-//Common modules (for child app)
+//Common modules
 def imgURL() { return "https://raw.githubusercontent.com/MichaelStruck/SmartThingsPublic/master/img/" }
-def getSonos(){ def result = speakerSonos }
-def getRestrictions(){ def result = showRestrictions }
-def getNest(){ def result = tstatNest }
-def getMemCount(){ def result = memoryCount ? memoryCount : 2 }
-def getSwitchAbout(){ def result = "Created by Google Home Helper SmartApp" }
+def getMemCount(){ return memoryCount ? memoryCount : 2 }
+def getSwitchAbout(){ return "Created by Google Home Helper SmartApp" }
 //Version/Copyright/Information/Help
-private def textAppName() { def text = "Google Home Helper" }	
+private def textAppName() { return "Google Home Helper" }	
 private def textVersion() {
-    def version = "SmartApp Version: 1.0.0 (11/23/2016)"
+    def version = "SmartApp Version: 1.0.0 (11/26/2016)"
     def deviceCount= getChildDevices().size()
     def deviceVersion = state.sw1Ver && deviceCount ? "\n${state.sw1Ver}": ""
     deviceVersion += state.sw2Ver && deviceCount ? "\n${state.sw2Ver}": ""
     return "${version}${deviceVersion}"
 }
-private def versionInt(){def text = 100}
-private def textCopyright() {def text = "Copyright © 2016 Michael Struck"}
+private def versionInt(){return 100}
+private def textCopyright() {return "Copyright © 2016 Michael Struck"}
 private def textLicense() {
     def text =
 		"Licensed under the Apache License, Version 2.0 (the 'License'); "+
