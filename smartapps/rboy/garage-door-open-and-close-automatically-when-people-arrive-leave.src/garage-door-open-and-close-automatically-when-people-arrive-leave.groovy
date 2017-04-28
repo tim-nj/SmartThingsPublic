@@ -11,7 +11,7 @@
 */ 
 
 def clientVersion() {
-    return "01.05.00"
+    return "01.06.00"
 }
 
 /*
@@ -21,6 +21,7 @@ def clientVersion() {
 * Redistribution of any changes or code is not allowed without permission
 *
 * Change Log
+* 2017-4-22 - (v01.06.00) Added support for delayed opening of garage doors
 * 2016-11-5 - Added support for automatic code update notifications and fixed an issue with sms
 * 2016-10-7 - Added support for Operating Schedule for arrival and departure
 * 2016-8-17 - Added workaround for ST contact address book bug
@@ -54,6 +55,7 @@ def mainPage() {
         section("Open Garage Doors When People Arrive", hidden: false, hideable: true) {
             input "arrives", "capability.presenceSensor", title: "When one of these arrive", description: "Which people arrive?", multiple: true, required: false
             input "doorsOpen", "capability.doorControl", title: "Open these garage door(s)?", required: false, multiple: true
+            input "doorsOpenDelay", "number", title: "...after these seconds", required: false
             input "arriveSwitches", "capability.switch", title: "...and turn on these switches", description: "Turn on lights", multiple: true, required: false, submitOnChange: true
             if (arriveSwitches) {
                 input "arriveAfterDark", "bool", title: "...only if it's getting dark outside", description: "Turn on lights at night", required: false
@@ -160,6 +162,28 @@ def initialize() {
     schedule("0 0 " + randomHour + " ? * " + randomDayOfWeek, checkForCodeUpdate) // Check for code updates once a week at a random day and time between 10am and 6pm
 }
 
+def delayOpenDoors(evt) {
+    log.debug "Delayed arriveHandler $evt.displayName, $evt.name: $evt.value"
+    
+    def msg = "$delayOpenDoors seconds elapsed"
+    
+    if (evt.currentPresence != "present") {
+        msg += ", $evt.displayName not present, skipping opening doors"
+    } else {
+        for(door in doorsOpen) {
+            if (door.currentDoor == "closed") {
+                msg += ", opening $door"
+                door.open()
+            } else {
+                msg += ", $door already open"
+            }
+        }
+    }
+
+    log.debug(msg)
+    sendNotifications(msg)
+}
+
 def arriveHandler(evt)
 {
     log.debug "arriveHandler $evt.displayName, $evt.name: $evt.value"
@@ -170,12 +194,18 @@ def arriveHandler(evt)
     }
 
     def msg = "$evt.displayName arrived"
-    for(door in doorsOpen) {
-        if (door.currentDoor == "closed") {
-            msg += ", opening $door"
-            door.open()
-        } else {
-            msg += ", $door already open"
+    
+    if (doorsOpenDelay) {
+        msg += ", opening doors after $doorsOpenDelay seconds"
+        runIn(doorsOpenDelay, delayOpenDoors, [data: evt])        
+    } else {
+        for(door in doorsOpen) {
+            if (door.currentDoor == "closed") {
+                msg += ", opening $door"
+                door.open()
+            } else {
+                msg += ", $door already open"
+            }
         }
     }
 
