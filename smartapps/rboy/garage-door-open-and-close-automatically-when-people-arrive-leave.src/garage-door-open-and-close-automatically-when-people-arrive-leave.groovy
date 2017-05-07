@@ -11,7 +11,7 @@
 */ 
 
 def clientVersion() {
-    return "01.06.00"
+    return "01.06.01"
 }
 
 /*
@@ -21,6 +21,7 @@ def clientVersion() {
 * Redistribution of any changes or code is not allowed without permission
 *
 * Change Log
+* 2017-4-29 - (v01.06.01) Patch for delayed opening of garage doors
 * 2017-4-22 - (v01.06.00) Added support for delayed opening of garage doors
 * 2016-11-5 - Added support for automatic code update notifications and fixed an issue with sms
 * 2016-10-7 - Added support for Operating Schedule for arrival and departure
@@ -162,13 +163,16 @@ def initialize() {
     schedule("0 0 " + randomHour + " ? * " + randomDayOfWeek, checkForCodeUpdate) // Check for code updates once a week at a random day and time between 10am and 6pm
 }
 
-def delayOpenDoors(evt) {
-    log.debug "Delayed arriveHandler $evt.displayName, $evt.name: $evt.value"
+def delayOpenDoors(data) {
+    log.debug "Delayed arriveHandler presenceId: $data.deviceNetworkId, type: $data.type"
+    
+    def device = settings.arrives.find { it.deviceNetworkId == data.deviceNetworkId }
+    log.trace "Presence sensor: $device.displayName"
     
     def msg = "$delayOpenDoors seconds elapsed"
     
-    if (evt.currentPresence != "present") {
-        msg += ", $evt.displayName not present, skipping opening doors"
+    if (device.currentPresence != "present") {
+        msg += ", $device.displayName not present, skipping opening doors"
     } else {
         for(door in doorsOpen) {
             if (door.currentDoor == "closed") {
@@ -197,7 +201,7 @@ def arriveHandler(evt)
     
     if (doorsOpenDelay) {
         msg += ", opening doors after $doorsOpenDelay seconds"
-        runIn(doorsOpenDelay, delayOpenDoors, [data: evt])        
+        runIn(doorsOpenDelay, "delayOpenDoors", [data: [deviceNetworkId: evt.device.deviceNetworkId, type: evt.value]])        
     } else {
         for(door in doorsOpen) {
             if (door.currentDoor == "closed") {
@@ -280,7 +284,7 @@ private void sendNotifications(message) {
 // settings."userEndTime${x}${i}"
 // settings."userDayOfWeek${x}${i}"
 private checkSchedule(def i, def x) {
-    log.debug("Checking operating schedule $x for user $i")
+    log.trace("Checking operating schedule $x for user $i")
 
     TimeZone timeZone = location.timeZone
     if (!timeZone) {
@@ -295,7 +299,7 @@ private checkSchedule(def i, def x) {
     def currentDT = new Date(now())
 
     // some debugging in order to make sure things are working correclty
-    log.debug "Current time: ${currentDT.format("EEE MMM dd yyyy HH:mm z", timeZone)}"
+    log.trace "Current time: ${currentDT.format("EEE MMM dd yyyy HH:mm z", timeZone)}"
 
     // Check if we are within operating times
     if (settings."userStartTime${x}${i}" != null && settings."userEndTime${x}${i}" != null) {
@@ -303,11 +307,11 @@ private checkSchedule(def i, def x) {
         def scheduledEnd = timeToday(settings."userEndTime${x}${i}", timeZone)
 
         if (scheduledEnd <= scheduledStart) { // End time is next day
-            log.debug "End time is before start time, assuming it is the next day"
+            log.trace "End time is before start time, assuming it is the next day"
             scheduledEnd = scheduledEnd.next() // Get the time for tomorrow
         }
 
-        log.debug("Operating Start ${scheduledStart.format("EEE MMM dd yyyy HH:mm z", timeZone)}, End ${scheduledEnd.format("EEE MMM dd yyyy HH:mm z", timeZone)}")
+        log.trace("Operating Start ${scheduledStart.format("EEE MMM dd yyyy HH:mm z", timeZone)}, End ${scheduledEnd.format("EEE MMM dd yyyy HH:mm z", timeZone)}")
 
         if (currentDT < scheduledStart || currentDT > scheduledEnd) {
             log.info("Outside operating time schedule")
@@ -317,7 +321,7 @@ private checkSchedule(def i, def x) {
 
     // Check the condition under which we want this to run now
     // This set allows the most flexibility.
-    log.debug("Operating DOW(s): ${settings."userDayOfWeek${x}${i}"}")
+    log.trace("Operating DOW(s): ${settings."userDayOfWeek${x}${i}"}")
 
     if(settings."userDayOfWeek${x}${i}" == null) {
         log.warn "Day of week not specified for operating schedule $x for user $i, assuming no schedule set, so we are within schedule"
