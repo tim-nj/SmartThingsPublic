@@ -11,14 +11,15 @@
  */ 
  
 def clientVersion() {
-    return "02.05.00"
+    return "02.05.01"
 }
 
 /*
- * Modified by RBoy, SmartThings Z-Wave Garage Door Opener base code as of 2015-9-19
- * Changes Copyright RBoy, redistribution of any changes or modified code is not allowed without permission
+ * Modified by RBoy Apps, SmartThings Z-Wave Garage Door Opener base code as of 2015-9-19
+ * Changes Copyright RBoy Apps, redistribution of any changes or modified code is not allowed without permission
  *
  * Change Log
+ * 2017-5-4 - (v02.05.01) Updated color scheme to match ST's recommendation
  * 2016-11-5 - Added ability to report name and version for checking for code updates
  * 2016-10-6 - Put a patch to compensate for phantom "Opening" events from the device and only report state open when it's completely open
  * 2016-8-15 - Added default battery state to reset when first initalizing the system
@@ -56,7 +57,7 @@ def clientVersion() {
  *
  */
 metadata {
-	definition (name: "Z-Wave Garage Door Opener with Switch Capability", namespace: "rboy", author: "RBoy") {
+	definition (name: "Z-Wave Garage Door Opener with Switch Capability", namespace: "rboy", author: "RBoy Apps") {
 		capability "Actuator"
 		capability "Door Control"
 		capability "Garage Door Control"
@@ -97,22 +98,22 @@ metadata {
 	tiles(scale: 2) {
 		multiAttributeTile(name:"summary", type: "generic", width: 6, height: 4){
 			tileAttribute ("device.door", key: "PRIMARY_CONTROL") {
-                attributeState("unknown", label:'${name}', action:"refresh.refresh", icon:"st.doors.garage.garage-open", backgroundColor:"#ffa81e")
-                attributeState("closed", label:'${name}', action:"door control.open", icon:"st.doors.garage.garage-closed", backgroundColor:"#79b821", nextState:"opening")
-                attributeState("open", label:'${name}', action:"door control.close", icon:"st.doors.garage.garage-open", backgroundColor:"#ffa81e", nextState:"closing")
-                attributeState("opening", label:'${name}', icon:"st.doors.garage.garage-opening", backgroundColor:"#ffe71e")
-                attributeState("closing", label:'${name}', icon:"st.doors.garage.garage-closing", backgroundColor:"#ffe71e")
+                attributeState("unknown", label:'${name}', action:"refresh.refresh", icon:"st.doors.garage.garage-open", backgroundColor:"#e86d13")
+                attributeState("closed", label:'${name}', action:"door control.open", icon:"st.doors.garage.garage-closed", backgroundColor:"#00a0dc", nextState:"opening")
+                attributeState("open", label:'${name}', action:"door control.close", icon:"st.doors.garage.garage-open", backgroundColor:"#e86d13", nextState:"closing")
+                attributeState("opening", label:'${name}', icon:"st.doors.garage.garage-opening", backgroundColor:"#e86d13")
+                attributeState("closing", label:'${name}', icon:"st.doors.garage.garage-closing", backgroundColor:"#00a0dc")
             }
             tileAttribute ("device.lowBattery", key: "SECONDARY_CONTROL") {
 	            attributeState "battery", label:'${currentValue}', backgroundColor:"#ffffff"
             }
         }
 		standardTile("toggle", "device.door", width: 4, height: 4) {
-			state("unknown", label:'${name}', action:"refresh.refresh", icon:"st.doors.garage.garage-open", backgroundColor:"#ffa81e")
-			state("closed", label:'${name}', action:"door control.open", icon:"st.doors.garage.garage-closed", backgroundColor:"#79b821", nextState:"opening")
-			state("open", label:'${name}', action:"door control.close", icon:"st.doors.garage.garage-open", backgroundColor:"#ffa81e", nextState:"closing")
-			state("opening", label:'${name}', icon:"st.doors.garage.garage-opening", backgroundColor:"#ffe71e")
-			state("closing", label:'${name}', icon:"st.doors.garage.garage-closing", backgroundColor:"#ffe71e")
+			state("unknown", label:'${name}', action:"refresh.refresh", icon:"st.doors.garage.garage-open", backgroundColor:"#e86d13")
+			state("closed", label:'${name}', action:"door control.open", icon:"st.doors.garage.garage-closed", backgroundColor:"#00a0dc", nextState:"opening")
+			state("open", label:'${name}', action:"door control.close", icon:"st.doors.garage.garage-open", backgroundColor:"#e86d13", nextState:"closing")
+			state("opening", label:'${name}', icon:"st.doors.garage.garage-opening", backgroundColor:"#e86d13")
+			state("closing", label:'${name}', icon:"st.doors.garage.garage-closing", backgroundColor:"#00a0dc")
 		}
 		standardTile("open", "device.door", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
 			state "default", label:'open', action:"door control.open", icon:"st.doors.garage.garage-opening"
