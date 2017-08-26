@@ -11,16 +11,18 @@
 */ 
 
 def clientVersion() {
-    return "01.06.01"
+    return "01.07.00"
 }
 
 /*
 * Garage Door Open and Close
 *
-* Copyright RBoy
+* Copyright RBoy Apps
 * Redistribution of any changes or code is not allowed without permission
 *
 * Change Log
+* 2017-7-24 - (v 01.07.00) Added support for opening and closing mode selection
+* 2017-5-26 - (v 01.06.02) Multiple SMS numbers are now separate by a *
 * 2017-4-29 - (v01.06.01) Patch for delayed opening of garage doors
 * 2017-4-22 - (v01.06.00) Added support for delayed opening of garage doors
 * 2016-11-5 - Added support for automatic code update notifications and fixed an issue with sms
@@ -41,7 +43,7 @@ def clientVersion() {
 definition(
     name: "Garage Door Open and Close Automatically when People Arrive/Leave",
     namespace: "rboy",
-    author: "RBoy",
+    author: "RBoy Apps",
     description: "Open a garage door when someone arrives, Close a garage door when someone leaves",
     category: "Convenience",
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Meta/garage_contact.png",
@@ -61,6 +63,7 @@ def mainPage() {
             if (arriveSwitches) {
                 input "arriveAfterDark", "bool", title: "...only if it's getting dark outside", description: "Turn on lights at night", required: false
             }
+            input name: "openModes", type: "mode", title: "...only when in this mode(s)", required: false, multiple: true
         }
         for (i in 0..0) { // 1 Schedules allowed
             def usr = "A"
@@ -94,6 +97,7 @@ def mainPage() {
         section("Close Garage Doors When People Leave", hidden: false, hideable: true) {
             input "leaves", "capability.presenceSensor", title: "When one of these leave", description: "Which people leave?", multiple: true, required: false
             input "doorsClose", "capability.doorControl", title: "Close these garage door(s)?", required: false, multiple: true
+            input name: "closeModes", type: "mode", title: "...only when in this mode(s)", required: false, multiple: true
         }
         for (i in 0..0) { // 1 Schedules allowed
             def usr = "B"
@@ -126,7 +130,7 @@ def mainPage() {
         }
         section("Notifications") {
             input("recipients", "contact", title: "Send notifications to (optional)", multiple: true, required: false) {
-                paragraph "You can enter multiple phone numbers to send an SMS to by separating them with a '+'. E.g. 5551234567+4447654321"
+                paragraph "You can enter multiple phone numbers to send an SMS to by separating them with a '*'. E.g. 5551234567*4447654321"
                 input "sms", "phone", title: "Send SMS to (phone number)", required: false
                 input "push", "bool", title: "Send push notification", defaultValue: "true"
             }
@@ -192,6 +196,11 @@ def arriveHandler(evt)
 {
     log.debug "arriveHandler $evt.displayName, $evt.name: $evt.value"
 
+    if (settings."openModes" ? !settings."openModes".find{it == location.mode} : false) { // Check if we are within operating modes
+        log.warn "Out of operating mode, skipping arrival handling"
+        return
+    }
+    
     if (!checkSchedule(0, "A")) { // Check if we are within operating Schedule to operating things
         log.warn "Out of operating schedules, skipping arrival handling"
         return
@@ -234,6 +243,11 @@ def leaveHandler(evt)
 {
     log.debug "leaveHandler $evt.displayName, $evt.name: $evt.value"
 
+    if (settings."closeModes" ? !settings."closeModes".find{it == location.mode} : false) { // Check if we are within operating modes
+        log.warn "Out of operating mode, skipping departure handling"
+        return
+    }
+    
     if (!checkSchedule(0, "B")) { // Check if we are within operating Schedule to operating things
         log.warn "Out of operating schedules, skipping departure handling"
         return
@@ -255,7 +269,7 @@ def leaveHandler(evt)
 
 private void sendText(number, message) {
     if (number) {
-        def phones = number.split("\\+")
+        def phones = number.split("\\*")
         for (phone in phones) {
             sendSms(phone, message)
         }
@@ -357,7 +371,7 @@ private checkSchedule(def i, def x) {
 }
 
 def checkForCodeUpdate(evt) {
-    log.trace "Getting latest version data from the RBoy server"
+    log.trace "Getting latest version data from the RBoy Apps server"
     
     def appName = "Garage Door Open and Close Automatically when People Arrive/Leave"
     def serverUrl = "http://smartthings.rboyapps.com"
@@ -368,7 +382,7 @@ def checkForCodeUpdate(evt) {
             uri: serverUrl,
             path: serverPath
         ]) { ret ->
-            log.trace "Received response from RBoyServer, headers=${ret.headers.'Content-Type'}, status=$ret.status"
+            log.trace "Received response from RBoy Apps Server, headers=${ret.headers.'Content-Type'}, status=$ret.status"
             //ret.headers.each {
             //    log.trace "${it.name} : ${it.value}"
             //}
@@ -379,7 +393,7 @@ def checkForCodeUpdate(evt) {
                 // Check for app version updates
                 def appVersion = ret.data?."$appName"
                 if (appVersion > clientVersion()) {
-                    def msg = "New version of app ${app.label} available: $appVersion, version: ${clientVersion()}.\nPlease visit $serverUrl to get the latest version."
+                    def msg = "New version of app ${app.label} available: $appVersion, current version: ${clientVersion()}.\nPlease visit $serverUrl to get the latest version."
                     log.info msg
                     if (!disableUpdateNotifications) {
                         sendPush(msg)
@@ -397,7 +411,7 @@ def checkForCodeUpdate(evt) {
                             def deviceName = device?.currentValue("dhName")
                             def deviceVersion = ret.data?."$deviceName"
                             if (deviceVersion && (deviceVersion > device?.currentValue("codeVersion"))) {
-                                def msg = "New version of device ${device?.displayName} available: $deviceVersion, version: ${device?.currentValue("codeVersion")}.\nPlease visit $serverUrl to get the latest version."
+                                def msg = "New version of device ${device?.displayName} available: $deviceVersion, current version: ${device?.currentValue("codeVersion")}.\nPlease visit $serverUrl to get the latest version."
                                 log.info msg
                                 if (!disableUpdateNotifications) {
                                     sendPush(msg)
