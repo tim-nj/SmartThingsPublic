@@ -11,18 +11,18 @@
 */ 
 
 def clientVersion() {
-    return "01.07.00"
+    return "01.08.00"
 }
 
 /*
 * Garage Door Open and Close
 *
-* Copyright RBoy Apps
-* Redistribution of any changes or code is not allowed without permission
+* Copyright RBoy Apps, redistribution or reuse of code is not allowed without permission
 *
 * Change Log
-* 2017-7-24 - (v 01.07.00) Added support for opening and closing mode selection
-* 2017-5-26 - (v 01.06.02) Multiple SMS numbers are now separate by a *
+* 2017-9-6 - (v01.08.00) Added support for expirations past midnight
+* 2017-7-24 - (v01.07.00) Added support for opening and closing mode selection
+* 2017-5-26 - (v01.06.02) Multiple SMS numbers are now separate by a *
 * 2017-4-29 - (v01.06.01) Patch for delayed opening of garage doors
 * 2017-4-22 - (v01.06.00) Added support for delayed opening of garage doors
 * 2016-11-5 - Added support for automatic code update notifications and fixed an issue with sms
@@ -321,8 +321,16 @@ private checkSchedule(def i, def x) {
         def scheduledEnd = timeToday(settings."userEndTime${x}${i}", timeZone)
 
         if (scheduledEnd <= scheduledStart) { // End time is next day
-            log.trace "End time is before start time, assuming it is the next day"
-            scheduledEnd = scheduledEnd.next() // Get the time for tomorrow
+            def localHour = currentDT.getHours() + (int)(timeZone.getOffset(currentDT.getTime()) / 1000 / 60 / 60)
+            //log.trace "Local hour is $localHour"
+            if (( localHour >= 0) && (localHour < 12)) // If we between midnight and midday
+            {
+                log.debug "End time is before start time and we are past midnight, assuming start time is previous day"
+                scheduledStart = scheduledStart.previous() // Get the start time for yesterday
+            } else {
+                log.debug "End time is before start time and we are past midday, assuming end time is the next day"
+                scheduledEnd = scheduledEnd.next() // Get the end time for tomorrow
+            }
         }
 
         log.trace("Operating Start ${scheduledStart.format("EEE MMM dd yyyy HH:mm z", timeZone)}, End ${scheduledEnd.format("EEE MMM dd yyyy HH:mm z", timeZone)}")
