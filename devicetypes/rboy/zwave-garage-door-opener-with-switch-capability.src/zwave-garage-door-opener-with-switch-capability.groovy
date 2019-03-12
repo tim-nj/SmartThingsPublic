@@ -1,3 +1,13 @@
+/*
+ * -----------------------
+ * --- DEVICE HANDLER ----
+ * -----------------------
+ *
+ * STOP:  Do NOT PUBLISH the code to GitHub, it is a VIOLATION of the license terms.
+ * You are NOT allowed share, distribute, reuse or publicly host (e.g. GITHUB) the code. Refer to the license details on our website.
+ *
+ */
+
 /* **DISCLAIMER**
  * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
  * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
@@ -11,7 +21,7 @@
  */ 
  
 def clientVersion() {
-    return "02.05.01"
+    return "02.05.03"
 }
 
 /*
@@ -19,30 +29,27 @@ def clientVersion() {
  * Changes Copyright RBoy Apps, redistribution of any changes or modified code is not allowed without permission
  *
  * Change Log
- * 2017-5-4 - (v02.05.01) Updated color scheme to match ST's recommendation
- * 2016-11-5 - Added ability to report name and version for checking for code updates
- * 2016-10-6 - Put a patch to compensate for phantom "Opening" events from the device and only report state open when it's completely open
- * 2016-8-15 - Added default battery state to reset when first initalizing the system
- * 2016-6-28 - Show reset low battery notification button when battery is low
- * 2016-4-20 - Added DH version in setup page
- * 2016-3-26 - Dont' report phantom "opening" messages from the GD00Z-4
- * 2016-3-15 - Added updated function
- * 2016-2-14 - Dont' write to event log on every poll
- * 2016-2-10 - Added polling capability for better updates
+ * 2018-10-16 - (v02.05.03) Updated support for new ST app
+ * 2018-08-05 - (v02.05.02) Added health check and basic support for the new ST app
+ * 2017-05-04 - (v02.05.01) Updated color scheme to match ST's recommendation
+ * 2016-11-05 - Added ability to report name and version for checking for code updates
+ * 2016-10-06 - Put a patch to compensate for phantom "Opening" events from the device and only report state open when it's completely open
+ * 2016-08-15 - Added default battery state to reset when first initalizing the system
+ * 2016-06-28 - Show reset low battery notification button when battery is low
+ * 2016-04-20 - Added DH version in setup page
+ * 2016-03-26 - Dont' report phantom "opening" messages from the GD00Z-4
+ * 2016-03-15 - Added updated function
+ * 2016-02-14 - Dont' write to event log on every poll
+ * 2016-02-10 - Added polling capability for better updates
  * 2015-12-30 - Send attribute "momentary.pushed" when a push command is sent
  * 2015-12-12 - Added capability polling and relay switch
- * 2015-9-23 - Updated layout and colors
- * 2015-9-19 - Updated to MultiAttribute Tiles
- * 2015-7-7 - Forced update GUI on sensor battery state change
- * 2015-7-6 - Added support for low battery notification and tile
- * 2015-4-29 - Added Garage door control capability
- * 2015-2-22 - Fixed issue with swtich status not being reported
- * 2015-2-2 - Added support for Switch capabilities to use directly with ST App
- *
- */
- 
- /**
- *  Z-Wave Garage Door Opener
+ * 2015-09-23 - Updated layout and colors
+ * 2015-09-19 - Updated to MultiAttribute Tiles
+ * 2015-07-07 - Forced update GUI on sensor battery state change
+ * 2015-07-06 - Added support for low battery notification and tile
+ * 2015-04-29 - Added Garage door control capability
+ * 2015-02-22 - Fixed issue with swtich status not being reported
+ * 2015-02-02 - Added support for Switch capabilities to use directly with ST App
  *
  *  Copyright 2014 SmartThings
  *
@@ -56,8 +63,9 @@ def clientVersion() {
  *  for the specific language governing permissions and limitations under the License.
  *
  */
+ 
 metadata {
-	definition (name: "Z-Wave Garage Door Opener with Switch Capability", namespace: "rboy", author: "RBoy Apps") {
+	definition (name: "Z-Wave Garage Door Opener with Switch Capability", namespace: "rboy", author: "RBoy Apps", ocfDeviceType: "oic.d.garagedoor", mnmn: "SmartThings", vid:"generic-contact-4") {
 		capability "Actuator"
 		capability "Door Control"
 		capability "Garage Door Control"
@@ -69,6 +77,7 @@ metadata {
         capability "Relay Switch"
         capability "Momentary"
         capability "Battery"
+        capability "Health Check"
         
         command "resetBattery"
         
@@ -143,16 +152,35 @@ metadata {
 
 import physicalgraph.zwave.commands.barrieroperatorv1.*
 
-def updated() {
-	log.trace "Update called settings: $settings"
-	try {
-		if (!state.init) {
-			state.init = true
-		}
+def installed(){
+    // Device-Watch simply pings if no device events received for 32min(checkInterval)
+	sendEvent(name: "checkInterval", value: 2 * 15 * 60 + 2 * 60, displayed: false, data: [protocol: "zwave", hubHardwareId: device.hub.hardwareID, offlinePingable: "1"])
+	
+    try {
         response(refresh()) // Get the updates
 	} catch (e) {
 		log.warn "updated() threw $e"
 	}
+}
+
+def updated(){
+	log.trace "Update called settings: $settings"
+
+    // Device-Watch simply pings if no device events received for 32min(checkInterval)
+	sendEvent(name: "checkInterval", value: 2 * 15 * 60 + 2 * 60, displayed: false, data: [protocol: "zwave", hubHardwareId: device.hub.hardwareID, offlinePingable: "1"])
+	
+    try {
+        response(refresh()) // Get the updates
+	} catch (e) {
+		log.warn "updated() threw $e"
+	}
+}
+
+/**
+ * PING is used by Device-Watch in attempt to reach the Device
+ * */
+def ping() {
+	refresh()
 }
 
 def parse(String description) {
@@ -447,3 +475,5 @@ def push() {
             break
     }
 }
+
+// THIS IS THE END OF THE FILE
