@@ -1,3 +1,13 @@
+/*
+ * -----------------------
+ * ------ SMART APP ------
+ * -----------------------
+ *
+ * STOP:  Do NOT PUBLISH the code to GitHub, it is a VIOLATION of the license terms.
+ * You are NOT allowed share, distribute, reuse or publicly host (e.g. GITHUB) the code. Refer to the license details on our website.
+ *
+ */
+
 /* **DISCLAIMER**
 * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
 * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
@@ -11,21 +21,26 @@
 */ 
 
 def clientVersion() {
-    return "01.01.00"
+    return "01.03.03"
 }
 
 /**
-*  Low Battery Monitor and Notification
-*
-* Copyright RBoy, redistribution of any changes or code is not allowed without permission
-* 2016-11-5 - Added support for automatic code update notifications and fixed an issue with sms
-* 2016-10-11 - Initial Release
-*/
+ *  Low Battery Monitor and Notification
+ *
+ * Copyright RBoy Apps, redistribution of any changes or code is not allowed without permission
+ * 2019-06-24 - (v01.03.03) Don't resume playback if no audio volume is specified
+ * 2019-06-07 - (v01.03.02) Added support for silent push, sanity checking for multiple SMS
+ * 2019-02-28 - (v01.03.01) Show invalid battery as unknown instead of null
+ * 2018-01-28 - (v01.03.00) Patch for slow ST server causing settings not to be reflected in real time, added support for audio notifications
+ * 2017-05-15 - (v01.02.00) Added support for notifying if devices don't report battery status within XX days, separate multiple SMS numbers with a *
+ * 2016-11-05 - Added support for automatic code update notifications and fixed an issue with sms
+ * 2016-10-11 - Initial Release
+ */
 
 definition(
     name: "Low Battery Monitor and Notification",
     namespace: "rboy",
-    author: "RBoy",
+    author: "RBoy Apps",
     description: "Monitor devices battery and send notifications when they reach various thresholds",
     category: "Safety & Security",
     iconUrl: "http://smartthings.rboyapps.com/images/BatteryAlert.png",
@@ -65,6 +80,8 @@ def setupAppPage() {
                     // Now get rid of the rules in the settings
                     deleteSetting("batteryUpper${rule.index}")
                     deleteSetting("monitorDevices${rule.index}")
+                    deleteSetting("monitorDevicesReporting${rule.index}")
+                    deleteSetting("monitorDevicesReportingDays${rule.index}")
                     deleteSetting("deleteRule${rule.index}")
                     deleteSetting("name${rule.index}")
                     log.trace "Updated Settings $settings"
@@ -81,21 +98,28 @@ def setupAppPage() {
                 rule: [index:now() as String], // Create a new rule to use (by default we'll delete this rule and settings unless the user confirms), use as String otherwise it won't work on Android
                 passed: true 
             ]
-            href(name: "NewMonitorRule", params: hrefParams, title: "+ Define a new battery monitor rule", page: "newMonitorRulePage", description: "", required: false)
+            href(name: "NewMonitorRule", params: hrefParams, title: "+ Add a new battery monitor rule", page: "newMonitorRulePage", description: "", required: false)
         }
 
         section("Notification Options") {
-            input "time", "time", title: "Check battery levels at this time everyday", required: true
+            input "time", "time", title: "Check battery levels at this time everyday", required: true, image: "http://www.rboyapps.com/images/Time.png"
+            input "audioDevices", "capability.audioNotification", title: "Speak notifications on", required: false, multiple: true, submitOnChange: true, image: "http://www.rboyapps.com/images/Horn.png"
+            if (audioDevices) {
+                input "audioVolume", "number", title: "...at this volume level (optional)", description: "keep current", required: false, range: "1..100"
+            }
             input("recipients", "contact", title: "Send notifications to", multiple: true, required: false) {
-                paragraph "You can enter multiple phone numbers to send an SMS to by separating them with a '+'. E.g. 5551234567+4447654321"
-                input name: "sms", title: "Send SMS notification to (optional):", type: "phone", required: false
-                input name: "notify", title: "Send Push Notification", type: "bool", defaultValue: true
+                input "notify", "bool", title: "Push notifications", required: false, image: "http://www.rboyapps.com/images/PushNotification.png", submitOnChange: true
+                if (!notify) {
+                    input "silentPush", "bool", title: "Silent notifications", required: false, image: "http://www.rboyapps.com/images/SilentNotification.png"
+                }
+                input "sms", "phone", title: "Send SMS notification to", required: false, image: "http://www.rboyapps.com/images/Notifications.png"
+                paragraph "You can enter multiple phone numbers by separating them with a '*'. E.g. 5551234567*+448747654321"
             }
         }
 
         section() {
             label title: "Assign a name for this SmartApp (optional)", required: false
-            input name: "disableUpdateNotifications", title: "Don't check for new versions of the app", type: "bool", required: false
+            input name: "updateNotifications", title: "Check for new versions of the app", type: "bool", defaultValue: true, required: false
         }
     }
 }
@@ -134,6 +158,8 @@ def newMonitorRulePage(params) {
             
             def upper = settings."batteryUpper${rule.index}"
             def devices = settings."monitorDevices${rule.index}"
+            def monitor = settings."monitorDevicesReporting${rule.index}"
+            def days = settings."monitorDevicesReportingDays${rule.index}"
             def name = settings."name${rule.index}"
             def deleteRule = settings."deleteRule${rule.index}"
             
@@ -151,10 +177,17 @@ def newMonitorRulePage(params) {
                 }
             }
             
-            log.trace "upper: $upper, name: $name, deleteRule: $deleteRule, devices: $devices"
+            log.trace "upper: $upper, name: $name, monitor: $monitor, days: $days, deleteRule: $deleteRule, devices: $devices"
 
             input "batteryUpper${rule.index}", "number", title: "If the battery is below (%)", description: "1 to 100", required: true, range: "1..100", submitOnChange: true
             input "monitorDevices${rule.index}", "capability.battery", title: "Monitor these devices", multiple: true, required: true, submitOnChange: true
+            
+            // Battery monitor is not reliable as of now - https://community.smartthings.com/t/release-configurable-low-battery-monitor-notification-and-device-monitoring/59780/25
+            // UNCOMMENT THE NEXT 4 LINES TO ENABLE BATTERY REPORT MONITORING
+            //input "monitorDevicesReporting${rule.index}", "bool", title: "Notify if these devices don't report battery levels", multiple: false, required: true, submitOnChange: true
+            //if (monitor) {
+            //    input "monitorDevicesReportingDays${rule.index}", "number", title: "...for these many days", range:"1..*", multiple: false, required: true, submitOnChange: true
+            //}
 
             if (upper && devices) { // Don't show this for a new rule
                 input "name${rule.index}", "text", title: "Name this rule (optional)", required: false, submitOnChange: true
@@ -177,6 +210,8 @@ def updated() {
 def initialize() {
     log.trace "Initializing settings with rules $atomicState.rules"
 
+    state.clientVersion = clientVersion() // Update our local stored client version to detect code upgrades
+    
     unsubscribe()
     unschedule()
     
@@ -186,14 +221,29 @@ def initialize() {
         log.error "Hub timeZone not set, using ${timeZone.getDisplayName()} timezone. Please set Hub location and timezone for the codes to work accurately"
         sendPush "Hub timeZone not set, using ${timeZone.getDisplayName()} timezone. Please set Hub location and timezone for the codes to work accurately"
     }
+    
+    // Subscribe to battery events to check for devices that may have stopped reporting
+    atomicState.batteryEvents = [:] // Clear all battery events
+    for (rule in atomicState.rules) {
+        def devices = settings."monitorDevices${rule.index}"
+        def monitor = settings."monitorDevicesReporting${rule.index}"
+        def days = settings."monitorDevicesReportingDays${rule.index}"
+        if (monitor && days) {
+            def batteryEvents = atomicState.batteryEvents ?: [:] // We need to deference the atomicState object each time and it may contain a null if it's empty so we need to allocate a new object, https://community.smartthings.com/t/atomicstate-not-working/27827/6?u=rboy
+            for (device in devices) {
+                batteryEvents[device.id] = now() // Track battery reporting for subscribed device starting now, comment this line to only track devices which report battery events atleast once starting now
+            }
+            atomicState.batteryEvents = batteryEvents
+            subscribe(devices, "battery", batteryEventHandler, [filterEvents: false]) // We want all events, if they are repeated with same value
+        }
+    }
 
-    def calendar = Calendar.getInstance()
-    calendar.setTimeZone(timeZone)
-    def today = calendar.get(Calendar.DAY_OF_WEEK)
+    // Schedule battery level check
     def timeNow = now()
     log.trace("Current time is ${(new Date(timeNow)).format("EEE MMM dd yyyy HH:mm z", timeZone)}")
     log.trace("Battery check schedule ${timeToday(time, timeZone).format("HH:mm z", timeZone)}")
     schedule(timeToday(time, timeZone), checkBatteryLevels)
+    subscribe(app, appTouchMethod)
 
     // Check for new versions of the code
     def random = new Random()
@@ -204,24 +254,73 @@ def initialize() {
     checkBatteryLevels() // Do it now for sanity check
 }
 
+def appTouchMethod(evt) {
+    log.debug "User requested battery level check"
+    checkBatteryLevels()
+}
+
+def batteryEventHandler(evt) {
+    log.trace "Battery event device: ${evt.device}, value: ${evt.value}"
+    
+    def batteryEvents = atomicState.batteryEvents ?: [:] // We need to deference the atomicState object each time and it may contain a null if it's empty so we need to allocate a new object, https://community.smartthings.com/t/atomicstate-not-working/27827/6?u=rboy
+    batteryEvents[evt.device.id] = now() // We got the event now
+    atomicState.batteryEvents = batteryEvents
+    
+    //log.debug atomicState.batteryEvents
+}
+
 def checkBatteryLevels() {
     log.trace "Checking battery levels"
+
+    // Check if the user has upgraded the SmartApp and reinitailize if required
+    if (state.clientVersion != clientVersion()) {
+        def msg = "NOTE: ${app.label} detected a code upgrade. Updating configuration, please open the app and click on Save to re-validate your settings"
+        log.warn msg
+        runIn(1, initialize) // Reinitialize the app offline to avoid a loop as appTouch calls codeCheck
+        sendNotifications(msg) // Do this in the end as it may timeout
+        return
+    }
     
+    TimeZone timeZone = location.timeZone
+    if (!timeZone) {
+        timeZone = TimeZone.getDefault()
+        log.error "Hub timeZone not set, using ${timeZone.getDisplayName()} timezone. Please set Hub location and timezone for the codes to work accurately"
+        sendPush "Hub timeZone not set, using ${timeZone.getDisplayName()} timezone. Please set Hub location and timezone for the codes to work accurately"
+    }
+
     for (rule in atomicState.rules) {
         def upper = settings."batteryUpper${rule.index}" as Integer
         def devices = settings."monitorDevices${rule.index}"
         def name = settings."name${rule.index}"
+        def monitor = settings."monitorDevicesReporting${rule.index}"
+        def days = settings."monitorDevicesReportingDays${rule.index}"
         
-        log.trace "upper: $upper, name: $name, devices: $devices"
+        //log.trace "upper: $upper, name: $name, devices: $devices"
         
         for (device in devices) {
-            def batteryLevel = device.currentValue("battery") as Integer
-            def msg = "${device.displayName} battery level is $batteryLevel%"
-			log.trace msg
-            if (batteryLevel < upper)
-            {
-                log.warn "${device.displayName} battery level $batteryLevel% below configured threshold of $upper%"
-                sendNotificationMessage(msg)
+            // If we haven't received any battery notification events from devices in the last XX days then notify the user
+            def batteryEvents = atomicState.batteryEvents ?: [:] // We need to deference the atomicState object each time and it may contain a null if it's empty so we need to allocate a new object, https://community.smartthings.com/t/atomicstate-not-working/27827/6?u=rboy
+            def lastEvent = batteryEvents[device.id]
+            /*if (lastEvent) { // NOTE: TEST COMMENT BEFORE PRODUCTION
+                def tmpMsg = "Last battery event for ${device.displayName} reported was ${(new Date(lastEvent)).format("EEE MMM dd yyyy HH:mm z", timeZone)}"
+                log.debug tmpMsg
+                if (lastEvent < (now() - 1*24*60*60*1000)) {
+                    sendNotifications(tmpMsg)
+                }
+            }*/
+            if (monitor && days && lastEvent && (lastEvent < (now() - days*24*60*60*1000))) { // XX days since last event
+                def msg = "${device.displayName} has not reported any battery levels since ${(new Date(lastEvent)).format("EEE MMM dd yyyy HH:mm z", timeZone)}, check device health"
+                log.warn msg
+                sendNotifications(msg)
+            } else { // All good with battery event reporting, check battery levels
+                def batteryLevel = device.currentValue("battery") as Integer
+                def msg = "${device.displayName} battery level is ${batteryLevel == null ? "unknown" : batteryLevel + "%"}"
+                //log.trace msg
+                if (batteryLevel < upper)
+                {
+                    log.warn "${device.displayName} battery level $batteryLevel% below configured threshold of $upper%"
+                    sendNotifications(msg)
+                }
             }
         }
     }
@@ -229,36 +328,61 @@ def checkBatteryLevels() {
 
 private void sendText(number, message) {
     if (number) {
-        def phones = number.split("\\+")
+        def phones = number.replaceAll("[;,#]", "*").split("\\*") // Some users accidentally use ;,# instead of * and ST can't handle *,#+ in the number except for + at the beginning
         for (phone in phones) {
-            sendSms(phone, message)
+            try {
+                sendSms(phone, message)
+            } catch (Exception e) {
+                sendPush "Invalid phone number $phone"
+            }
         }
     }
 }
 
-private void sendNotificationMessage(message) {
+private void sendNotifications(message) {
+	if (!message) {
+		return
+    }
+    
     if (location.contactBookEnabled) {
-        log.debug "Sending message to $recipients"
         sendNotificationToContacts(message, recipients)
     } else {
-        log.debug "SMS: $sms, Push: $notify"
-        sms ? sendText(sms, message) : ""
-        notify ? sendPush(message) : sendNotificationEvent(message)
+        if (notify) {
+            sendPush message
+        } else if (silentPush) {
+            sendNotificationEvent(message)
+        }
+        if (sms) {
+            sendText(sms, message)
+        }
+    }
+    if (audioDevices) {
+        audioDevices*.playTextAndResume(message.replace("%", "percent"), audioVolume)
+        if (audioVolume) { // Only set volume if defined as it also resumes playback
+            audioDevices*.playTextAndResume(message.replace("%", "percent"), audioVolume)
+        } else {
+            audioDevices*.playText(message.replace("%", "percent"))
+        }
     }
 }
 
 // Temporarily override the user settings
+// Update a single setting
 private updateSetting(name, value) {
-    app.updateSetting(name, value) // For SmartApps
-    //settings[name] = value // For Device Handlers
+    app.updateSetting(name, value) // For SmartApps UI - THIS IS A VERY SLOW TRANSACTION as it writes directly to the DB
+    settings[name] = value // For Device Handlers and SmartApps - much faster but only works on uninitialized value (once the user updates it this approach won't work)
 }
 
+// Delete a single setting
 private deleteSetting(name) {
-    app.updateSetting(name, '') // For SmartApps delete it
+    //app.deleteSetting(name) // For SmartApps delete it, TODO: Gives and error - THIS IS A VERY SLOW TRANSACTION as it writes directly to the DB (don't mix app and settings approach or it causes corruption)
+    //settings.remove(name) // For Device Handlers
+    app.updateSetting(name, '') // For SmartApps - THIS IS A VERY SLOW TRANSACTION as it writes directly to the DB (don't mix app and settings approach or it causes corruption)
+    settings[name] = '' // For Device Handlers and SmartApps - much faster but only works on uninitialized value (once the user updates it this approach won't work)
 }
 
 def checkForCodeUpdate(evt) {
-    log.trace "Getting latest version data from the RBoy server"
+    log.trace "Getting latest version data from the RBoy Apps server"
     
     def appName = "Low Battery Monitor and Notification"
     def serverUrl = "http://smartthings.rboyapps.com"
@@ -269,7 +393,7 @@ def checkForCodeUpdate(evt) {
             uri: serverUrl,
             path: serverPath
         ]) { ret ->
-            log.trace "Received response from RBoyServer, headers=${ret.headers.'Content-Type'}, status=$ret.status"
+            log.trace "Received response from RBoy Apps Server, headers=${ret.headers.'Content-Type'}, status=$ret.status"
             //ret.headers.each {
             //    log.trace "${it.name} : ${it.value}"
             //}
@@ -280,9 +404,9 @@ def checkForCodeUpdate(evt) {
                 // Check for app version updates
                 def appVersion = ret.data?."$appName"
                 if (appVersion > clientVersion()) {
-                    def msg = "New version of app ${app.label} available: $appVersion, version: ${clientVersion()}.\nPlease visit $serverUrl to get the latest version."
+                    def msg = "New version of app ${app.label} available: $appVersion, current version: ${clientVersion()}.\nPlease visit $serverUrl to get the latest version."
                     log.info msg
-                    if (!disableUpdateNotifications) {
+                    if (updateNotifications != false) { // The default true may not be registered
                         sendPush(msg)
                     }
                 } else {
@@ -301,9 +425,9 @@ def checkForCodeUpdate(evt) {
                             def deviceName = device?.currentValue("dhName")
                             def deviceVersion = ret.data?."$deviceName"
                             if (deviceVersion && (deviceVersion > device?.currentValue("codeVersion"))) {
-                                def msg = "New version of device ${device?.displayName} available: $deviceVersion, version: ${device?.currentValue("codeVersion")}.\nPlease visit $serverUrl to get the latest version."
+                                def msg = "New version of device handler for ${device?.displayName} available: $deviceVersion, current version: ${device?.currentValue("codeVersion")}.\nPlease visit $serverUrl to get the latest version."
                                 log.info msg
-                                if (!disableUpdateNotifications) {
+                                if (updateNotifications != false) { // The default true may not be registered
                                     sendPush(msg)
                                 }
                             } else {
@@ -320,3 +444,5 @@ def checkForCodeUpdate(evt) {
         log.error "Exception while querying latest app version: $e"
     }
 }
+
+// THIS IS THE END OF THE FILE
